@@ -83,6 +83,22 @@ const CLASS_META = {
     color: "#a855f7",
   },
 };
+const getOutputUrl = (value) => {
+  if (!value) return "";
+
+  if (
+    value.startsWith("http://") ||
+    value.startsWith("https://")
+  ) {
+    return value;
+  }
+
+  if (value.startsWith("/")) {
+    return `${API_BASE_URL}${value}`;
+  }
+
+  return `${API_BASE_URL}/${value}`;
+};
 
 
 function App() {
@@ -109,6 +125,11 @@ function App() {
 
   const [hoverInfo, setHoverInfo] =
     useState(null);
+
+  const [satelliteImageError, setSatelliteImageError] =
+    useState(false);
+
+  const [activePage, setActivePage] = useState("satellite");
 
 
   const handleFileChange = (event) => {
@@ -146,6 +167,7 @@ function App() {
     setLandcover(null);
     setInspectedPixel(null);
     setHoverInfo(null);
+    setSatelliteImageError(false);
     setError("");
   };
 
@@ -195,9 +217,11 @@ function App() {
         );
 
 
-      setAnalysis(
-        analysisResponse.data.result
-      );
+      const analysisResult =
+        analysisResponse.data.result;
+
+      setAnalysis(analysisResult);
+      setSatelliteImageError(false);
 
 
       // ------------------------------------------------------
@@ -221,9 +245,9 @@ function App() {
         landcoverResponse.data.result
       );
 
-      setActiveLayer(
-        "landcover"
-      );
+      // Show the original satellite scene first.
+      // The user can switch to Land Cover / Confidence / Water.
+      setActiveLayer("satellite");
 
     } catch (err) {
 
@@ -251,6 +275,7 @@ function App() {
     setLandcover(null);
     setInspectedPixel(null);
     setHoverInfo(null);
+    setSatelliteImageError(false);
     setError("");
 
     const input =
@@ -321,6 +346,12 @@ function App() {
 
     }, [landcover]);
 
+
+  if (activePage === "disaster") {
+    return (
+      <DisasterDashboard onBack={() => setActivePage("satellite")} />
+    );
+  }
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#03070d] text-white">
@@ -590,6 +621,13 @@ function App() {
               SYSTEM ONLINE
 
             </div>
+
+            <button
+              onClick={() => setActivePage("disaster")}
+              className="rounded-full border border-orange-400/30 bg-orange-400/10 px-3 py-1.5 text-[10px] font-bold text-orange-300 transition hover:-translate-y-0.5 hover:bg-orange-400/20 hover:text-white"
+            >
+              🚨 Natural Disasters
+            </button>
 
           </div>
 
@@ -1533,13 +1571,15 @@ function App() {
                         analysis?.rgb_preview && (
 
                           <ImageOverlay
-                            url={
-                              `${API_BASE_URL}${analysis.rgb_preview}`
-                            }
-                            bounds={
-                              mapBounds
-                            }
-                            opacity={0.95}
+                            key={getOutputUrl(analysis.rgb_preview)}
+                            url={getOutputUrl(analysis.rgb_preview)}
+                            bounds={mapBounds}
+                            opacity={0.98}
+                            zIndex={20}
+                            eventHandlers={{
+                              load: () => setSatelliteImageError(false),
+                              error: () => setSatelliteImageError(true),
+                            }}
                           />
 
                         )}
@@ -1550,9 +1590,7 @@ function App() {
                         landcover.prediction_preview && (
 
                           <ImageOverlay
-                            url={
-                              `${API_BASE_URL}${landcover.prediction_preview}`
-                            }
+                           url={getOutputUrl(landcover.prediction_preview)}
                             bounds={
                               mapBounds
                             }
@@ -1568,7 +1606,7 @@ function App() {
 
                           <ImageOverlay
                             url={
-                              `${API_BASE_URL}${landcover.confidence_preview}`
+                              getOutputUrl(landcover.confidence_preview)
                             }
                             bounds={
                               mapBounds
@@ -1585,7 +1623,7 @@ function App() {
 
                           <ImageOverlay
                             url={
-                              `${API_BASE_URL}${landcover.water_preview}`
+                              getOutputUrl(landcover.water_preview)
                             }
                             bounds={
                               mapBounds
@@ -1613,6 +1651,27 @@ function App() {
 
                     </MapContainer>
 
+                  )}
+
+
+                  {activeLayer === "satellite" && analysis?.rgb_preview && satelliteImageError && (
+                    <div className="absolute inset-0 z-[450] flex items-center justify-center bg-[#02060a]/90 p-8">
+                      <div className="max-w-md rounded-2xl border border-red-400/20 bg-black/70 p-6 text-center backdrop-blur-xl">
+                        <AlertCircle className="mx-auto h-7 w-7 text-red-300" />
+                        <p className="mt-3 text-sm font-semibold text-white">Satellite preview could not be loaded</p>
+                        <p className="mt-2 text-[10px] leading-5 text-slate-400">
+                          The GeoTIFF was accepted, but the browser could not retrieve the generated RGB preview from the backend.
+                        </p>
+                        <a
+                          href={getOutputUrl(analysis.rgb_preview)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 inline-flex rounded-lg border border-cyan-400/20 px-4 py-2 text-[10px] text-cyan-300 hover:bg-cyan-400/10"
+                        >
+                          Open satellite preview directly
+                        </a>
+                      </div>
+                    </div>
                   )}
 
 
@@ -1694,6 +1753,38 @@ function App() {
 
             </section>
 
+
+            {/* ================================================= */}
+            {/* SOURCE SATELLITE PREVIEW */}
+            {/* ================================================= */}
+
+            {analysis?.rgb_preview && (
+              <section className="mb-8 rounded-2xl border border-cyan-400/10 bg-white/[0.02] p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] uppercase tracking-[.2em] text-cyan-400">Source Scene</p>
+                    <h3 className="mt-1 text-lg font-semibold">Uploaded Satellite Imagery</h3>
+                    <p className="mt-1 text-[10px] text-slate-500">Natural-colour preview generated from B4, B3 and B2 bands.</p>
+                  </div>
+                  <button
+                    onClick={() => setActiveLayer("satellite")}
+                    className="rounded-lg bg-cyan-400 px-3 py-2 text-[10px] font-bold text-slate-950 hover:bg-cyan-300"
+                  >
+                    View on map
+                  </button>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+                  <img
+                    src={getOutputUrl(analysis.rgb_preview)}
+                    alt="Uploaded satellite scene preview"
+                    className="block max-h-[620px] w-full object-contain"
+                    onError={() => setSatelliteImageError(true)}
+                    onLoad={() => setSatelliteImageError(false)}
+                  />
+                </div>
+              </section>
+            )}
 
             {/* ================================================= */}
             {/* PIXEL INSPECTION */}
@@ -2415,6 +2506,357 @@ function App() {
   );
 }
 
+
+/* ============================================================
+   NATURAL DISASTER DASHBOARD
+   ============================================================ */
+
+function DisasterDashboard({ onBack }) {
+  const inputRef = useRef(null);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState("Ready for emergency imagery");
+  const [error, setError] = useState("");
+  const [mode, setMode] = useState("all");
+  const [result, setResult] = useState(null);
+  const [fireResult, setFireResult] = useState(null);
+  const [activeLayer, setActiveLayer] = useState("source");
+
+  const selectFile = (selected) => {
+    if (!selected) return;
+
+    const name = selected.name.toLowerCase();
+    if (!name.endsWith(".tif") && !name.endsWith(".tiff")) {
+      setError("Please upload a GeoTIFF (.tif or .tiff) file.");
+      return;
+    }
+
+    setFile(selected);
+    setResult(null);
+    setFireResult(null);
+    setError("");
+    setStage("GeoTIFF loaded — ready for analysis");
+    setActiveLayer("source");
+  };
+
+  const analyse = async () => {
+    if (!file) {
+      setError("Please upload a GeoTIFF image first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult(null);
+    setFireResult(null);
+
+    try {
+      const sourceForm = new FormData();
+      sourceForm.append("file", file);
+
+      setStage("Generating satellite scene preview...");
+      const sourceResponse = await fetch(`${API_BASE_URL}/api/analyze`, {
+        method: "POST",
+        body: sourceForm,
+      });
+      const sourceData = await sourceResponse.json();
+
+      if (!sourceResponse.ok) {
+        throw new Error(sourceData.detail || "Satellite preview generation failed.");
+      }
+
+      setPreview(getOutputUrl(sourceData.result?.rgb_preview));
+
+      if (mode === "all" || mode === "flood") {
+        setStage("Analysing water extent and flood-risk evidence...");
+        const floodForm = new FormData();
+        floodForm.append("file", file);
+        const floodResponse = await fetch(`${API_BASE_URL}/api/disaster/flood`, {
+          method: "POST",
+          body: floodForm,
+        });
+        const floodData = await floodResponse.json();
+
+        if (!floodResponse.ok) {
+          throw new Error(floodData.detail || "Flood and water analysis failed.");
+        }
+        setResult(floodData.result);
+        setActiveLayer("water");
+      }
+
+      if (mode === "all" || mode === "fire") {
+        setStage("Analysing fire-related spectral evidence...");
+        const fireForm = new FormData();
+        fireForm.append("file", file);
+        const fireResponse = await fetch(`${API_BASE_URL}/api/disaster/fire`, {
+          method: "POST",
+          body: fireForm,
+        });
+        const fireData = await fireResponse.json();
+
+        if (!fireResponse.ok) {
+          throw new Error(fireData.detail || "Fire analysis failed.");
+        }
+        setFireResult(fireData.result);
+        if (mode === "fire") setActiveLayer("fire");
+      }
+
+      setStage("Disaster intelligence completed");
+    } catch (err) {
+      console.error("Disaster analysis error:", err);
+      setError(err.message || "Disaster analysis failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setFile(null);
+    setPreview("");
+    setResult(null);
+    setFireResult(null);
+    setError("");
+    setStage("Ready for emergency imagery");
+    setActiveLayer("source");
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const water = result?.water_intelligence;
+  const risk = result?.disaster_risk;
+  const outputs = result?.outputs;
+  const fire = fireResult?.fire_intelligence;
+  const fireRisk = fireResult?.risk;
+  const fireOutputs = fireResult?.outputs;
+
+  const currentMap =
+    activeLayer === "water" ? outputs?.water_preview :
+    activeLayer === "flood-risk" ? outputs?.risk_preview :
+    activeLayer === "water-confidence" ? outputs?.confidence_preview :
+    activeLayer === "fire" ? fireOutputs?.fire_preview :
+    activeLayer === "fire-risk" ? fireOutputs?.risk_preview :
+    activeLayer === "fire-confidence" ? fireOutputs?.confidence_preview :
+    preview;
+
+  return (
+    <div className="min-h-screen overflow-hidden bg-[#05080d] text-white">
+      <style>{`
+        @keyframes disasterPulse { 0%,100% { opacity:.45; transform:scale(1); } 50% { opacity:1; transform:scale(1.08); } }
+        @keyframes radarSweep { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+        @keyframes dangerFloat { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-7px); } }
+        .disaster-orb { animation: disasterPulse 3s ease-in-out infinite; }
+        .radar-sweep { animation: radarSweep 8s linear infinite; transform-origin:center; }
+        .danger-float { animation: dangerFloat 4s ease-in-out infinite; }
+      `}</style>
+
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#05080d]/90 backdrop-blur-2xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400 transition hover:border-cyan-400/30 hover:text-white">
+              ← Satellite
+            </button>
+            <div className="hidden h-10 w-px bg-white/10 sm:block" />
+            <div>
+              <p className="text-lg font-bold tracking-wide">CHROMASAT <span className="text-orange-400">EMERGENCY</span></p>
+              <p className="text-[9px] uppercase tracking-[.2em] text-slate-500">Natural Disaster Intelligence System</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[9px] text-emerald-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> ENGINE ONLINE
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-5 py-7">
+        <section className="relative mb-6 overflow-hidden rounded-3xl border border-orange-400/10 bg-gradient-to-br from-orange-400/[0.07] via-transparent to-red-500/[0.04] p-7">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="grid items-center gap-8 lg:grid-cols-[1fr_280px]">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/5 px-3 py-1.5 text-[9px] uppercase tracking-[.2em] text-orange-300">
+                🚨 Emergency Earth Observation
+              </div>
+              <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
+                See the danger.
+                <br />
+                <span className="text-orange-400">Understand the evidence.</span>
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
+                Upload the latest satellite GeoTIFF. CHROMASAT converts the scene into water, flood-risk and fire-related evidence that can support preliminary disaster assessment.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Pill text="GeoTIFF input" />
+                <Pill text="Water intelligence" />
+                <Pill text="Fire evidence" />
+                <Pill text="Risk mapping" />
+              </div>
+            </div>
+
+            <div className="danger-float relative mx-auto h-56 w-56">
+              <div className="absolute inset-4 rounded-full border border-orange-400/15" />
+              <div className="absolute inset-10 rounded-full border border-red-400/20 bg-red-500/[0.04] shadow-[0_0_70px_rgba(249,115,22,.12)]" />
+              <div className="radar-sweep absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 border-t border-orange-300/70" />
+              <div className="disaster-orb absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-400/30 blur-xl" />
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl">🌍</div>
+              <div className="absolute right-0 top-6 rounded-lg border border-orange-400/20 bg-black/60 px-2 py-1 text-[8px] text-orange-300">LIVE ANALYSIS</div>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[8px] text-slate-400">SATELLITE → RISK</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-6 grid gap-3 md:grid-cols-3">
+          <button onClick={() => setMode("all")} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-1 ${mode === "all" ? "border-orange-400/40 bg-orange-400/10" : "border-white/10 bg-white/[0.025]"}`}>
+            <p className="text-xl">🌐</p><p className="mt-3 text-sm font-bold">All Intelligence</p><p className="mt-1 text-[10px] text-slate-500">Run water + fire analysis together.</p>
+          </button>
+          <button onClick={() => setMode("flood")} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-1 ${mode === "flood" ? "border-cyan-400/40 bg-cyan-400/10" : "border-white/10 bg-white/[0.025]"}`}>
+            <p className="text-xl">🌊</p><p className="mt-3 text-sm font-bold">Flood / Water</p><p className="mt-1 text-[10px] text-slate-500">Water extent, confidence and risk evidence.</p>
+          </button>
+          <button onClick={() => setMode("fire")} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-1 ${mode === "fire" ? "border-red-400/40 bg-red-400/10" : "border-white/10 bg-white/[0.025]"}`}>
+            <p className="text-xl">🔥</p><p className="mt-3 text-sm font-bold">Fire Intelligence</p><p className="mt-1 text-[10px] text-slate-500">Potential burn/fire spectral evidence.</p>
+          </button>
+        </section>
+
+        <section className="mb-6 grid gap-5 lg:grid-cols-[.82fr_1.18fr]">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div><p className="text-[9px] uppercase tracking-[.2em] text-orange-400">01 / Emergency image</p><h2 className="mt-1 text-lg font-semibold">Upload Latest GeoTIFF</h2></div>
+              <CloudUpload className="h-5 w-5 text-orange-400" />
+            </div>
+            <input ref={inputRef} type="file" accept=".tif,.tiff" className="hidden" onChange={(e) => selectFile(e.target.files?.[0])} />
+            <button onClick={() => inputRef.current?.click()} className="group flex min-h-52 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-orange-400/25 bg-black/20 p-6 text-center transition hover:border-orange-400/60 hover:bg-orange-400/[0.03]">
+              <div className="mb-3 rounded-2xl bg-orange-400/10 p-4 transition group-hover:scale-110"><Upload className="h-7 w-7 text-orange-300" /></div>
+              <p className="font-medium">{file ? file.name : "Drop emergency satellite imagery"}</p>
+              <p className="mt-1 text-xs text-slate-500">Click to browse • TIFF / GeoTIFF</p>
+              {file && <p className="mt-3 text-[9px] text-emerald-400">✓ Scene ready for disaster analysis</p>}
+            </button>
+            {error && <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-300">⚠ {error}</div>}
+            <button onClick={analyse} disabled={!file || loading} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-400 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-orange-300 disabled:cursor-not-allowed disabled:opacity-40">
+              {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> {stage}</> : <><Sparkles className="h-4 w-4" /> Run Disaster Intelligence</>}
+            </button>
+            <p className="mt-3 text-center text-[9px] text-slate-600">{stage}</p>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div><p className="text-[9px] uppercase tracking-[.2em] text-cyan-400">02 / Source scene</p><h2 className="mt-1 text-lg font-semibold">Uploaded Satellite Image</h2></div>
+              {file && <button onClick={reset} className="rounded-lg border border-white/10 px-3 py-1.5 text-[9px] text-slate-400 hover:text-white">New scene</button>}
+            </div>
+            <div className="flex min-h-[390px] items-center justify-center bg-[#02060a] p-3">
+              {preview ? <img src={preview} alt="Uploaded satellite scene" className="max-h-[500px] w-full rounded-xl object-contain" /> : <div className="text-center text-slate-600"><Satellite className="mx-auto h-12 w-12 opacity-30" /><p className="mt-3 text-xs">Generated satellite preview will appear here</p></div>}
+            </div>
+          </div>
+        </section>
+
+        {(result || fireResult) && (
+          <>
+            <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <DisasterMetric icon="💧" title="Water extent" value={water ? `${water.water_percentage}%` : "—"} sub="Detected water pixels" />
+              <DisasterMetric icon="🛡️" title="Safe evidence" value={risk ? `${risk.safe_percentage}%` : "—"} sub="Lower-risk pixels" />
+              <DisasterMetric icon="🔥" title="Fire evidence" value={fire ? `${fire.potential_fire_percentage}%` : "—"} sub="Potential spectral evidence" />
+              <DisasterMetric icon="🎯" title="Fire confidence" value={fire ? `${(fire.mean_confidence * 100).toFixed(1)}%` : "—"} sub="Mean confidence" />
+            </section>
+
+            <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div><p className="text-[9px] uppercase tracking-[.2em] text-orange-400">03 / Intelligence layers</p><h2 className="mt-1 text-xl font-semibold">Disaster Evidence Map</h2><p className="mt-1 text-[10px] text-slate-500">Switch layers to inspect the generated evidence maps.</p></div>
+                <div className="flex flex-wrap gap-2">
+                  <DisasterLayerButton active={activeLayer === "source"} onClick={() => setActiveLayer("source")} label="Satellite" />
+                  {outputs?.water_preview && <DisasterLayerButton active={activeLayer === "water"} onClick={() => setActiveLayer("water")} label="Water" />}
+                  {outputs?.risk_preview && <DisasterLayerButton active={activeLayer === "flood-risk"} onClick={() => setActiveLayer("flood-risk")} label="Flood Risk" />}
+                  {outputs?.confidence_preview && <DisasterLayerButton active={activeLayer === "water-confidence"} onClick={() => setActiveLayer("water-confidence")} label="Water Confidence" />}
+                  {fireOutputs?.fire_preview && <DisasterLayerButton active={activeLayer === "fire"} onClick={() => setActiveLayer("fire")} label="Fire" />}
+                  {fireOutputs?.risk_preview && <DisasterLayerButton active={activeLayer === "fire-risk"} onClick={() => setActiveLayer("fire-risk")} label="Fire Risk" />}
+                  {fireOutputs?.confidence_preview && <DisasterLayerButton active={activeLayer === "fire-confidence"} onClick={() => setActiveLayer("fire-confidence")} label="Fire Confidence" />}
+                </div>
+              </div>
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black">
+                {currentMap ? <img src={getOutputUrl(currentMap)} alt="Disaster intelligence layer" className="max-h-[680px] w-full object-contain" /> : <div className="flex h-80 items-center justify-center text-xs text-slate-600">No map generated yet.</div>}
+                <div className="absolute left-4 top-4 rounded-xl border border-white/10 bg-black/70 px-3 py-2 text-[9px] backdrop-blur-xl"><span className="text-orange-300">●</span> {activeLayer.toUpperCase()} LAYER</div>
+              </div>
+            </section>
+
+            <section className="mb-6 grid gap-5 lg:grid-cols-2">
+              {result && <div className="rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.02] p-5">
+                <div className="mb-4 flex items-center gap-3"><div className="rounded-xl bg-cyan-400/10 p-2.5 text-cyan-300">🌊</div><div><p className="text-[9px] uppercase tracking-[.2em] text-cyan-400">Water intelligence</p><h3 className="text-sm font-semibold">Flood / Water Evidence</h3></div></div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <DisasterMetric title="Water" value={`${water?.water_percentage ?? 0}%`} sub="scene" compact />
+                  <DisasterMetric title="NDWI" value={water?.ndwi_mean?.toFixed(3) ?? "—"} sub="water signal" compact />
+                  <DisasterMetric title="MNDWI" value={water?.mndwi_mean?.toFixed(3) ?? "—"} sub="water signal" compact />
+                  <DisasterMetric title="Confidence" value={water ? `${(water.water_confidence_mean * 100).toFixed(1)}%` : "—"} sub="mean" compact />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <RiskBox label="HIGH" value={`${risk?.high_risk_percentage ?? 0}%`} tone="red" />
+                  <RiskBox label="MODERATE" value={`${risk?.moderate_risk_percentage ?? 0}%`} tone="amber" />
+                  <RiskBox label="SAFE" value={`${risk?.safe_percentage ?? 0}%`} tone="green" />
+                </div>
+              </div>}
+
+              {fireResult && <div className="rounded-2xl border border-red-400/10 bg-red-400/[0.02] p-5">
+                <div className="mb-4 flex items-center gap-3"><div className="rounded-xl bg-red-400/10 p-2.5 text-red-300">🔥</div><div><p className="text-[9px] uppercase tracking-[.2em] text-red-400">Fire intelligence</p><h3 className="text-sm font-semibold">Potential Fire / Burn Evidence</h3></div></div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <DisasterMetric title="Potential" value={`${fire?.potential_fire_percentage ?? 0}%`} sub="pixels" compact />
+                  <DisasterMetric title="Score" value={fire?.mean_fire_score?.toFixed(3) ?? "—"} sub="mean" compact />
+                  <DisasterMetric title="Confidence" value={fire ? `${(fire.mean_confidence * 100).toFixed(1)}%` : "—"} sub="mean" compact />
+                  <DisasterMetric title="High risk" value={`${fireRisk?.high_risk_percentage ?? 0}%`} sub="pixels" compact />
+                </div>
+                <div className="mt-4 rounded-xl border border-amber-400/10 bg-amber-400/[0.025] p-3 text-[10px] leading-5 text-slate-400">
+                  {fireResult.interpretation?.warning || "Fire output is satellite spectral evidence and should be verified in the field."}
+                </div>
+              </div>}
+            </section>
+
+            <section className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <p className="text-[9px] uppercase tracking-[.2em] text-orange-400">04 / Decision support</p>
+              <h2 className="mt-1 text-xl font-semibold">What the system is telling the officer</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <DecisionCard icon="🌊" title="Water change" text={water ? `${water.water_percentage}% of the scene is classified as water evidence. Compare this with earlier imagery before treating it as a flood event.` : "Run water analysis to generate evidence."} />
+                <DecisionCard icon="🔥" title="Fire signal" text={fire ? `${fire.potential_fire_percentage}% shows potential fire/burn spectral evidence. Thermal confirmation is not available in this 6-band Sentinel-2 input.` : "Run fire analysis to generate evidence."} />
+                <DecisionCard icon="🛡️" title="Safety zones" text={risk ? `${risk.safe_percentage}% is currently in the lower-risk class in this preliminary model output. Field conditions and official alerts remain essential.` : "Run flood analysis to generate preliminary risk zones."} />
+              </div>
+            </section>
+          </>
+        )}
+
+        <section className="mb-8 grid gap-4 md:grid-cols-3">
+          <FutureDisaster icon="🏚️" title="Earthquake / Damage" text="Before-vs-after satellite change detection for possible damaged zones." />
+          <FutureDisaster icon="🌪️" title="Cyclone Impact" text="Future module for storm-affected land and water changes." />
+          <FutureDisaster icon="⛰️" title="Landslide Evidence" text="Future module for terrain and vegetation disturbance evidence." />
+        </section>
+
+        <section className="rounded-2xl border border-amber-400/15 bg-amber-400/[0.025] p-5">
+          <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" /><div><h3 className="text-xs font-semibold text-amber-300">Emergency decision-support notice</h3><p className="mt-1 text-[10px] leading-5 text-slate-500">CHROMASAT provides satellite-derived evidence for preliminary assessment. It does not replace official warnings, field verification, hydrological measurements or emergency-response decisions.</p></div></div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function DisasterMetric({ icon, title, value, sub, compact = false }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/20 p-3 transition hover:-translate-y-1 hover:border-orange-400/20">
+      {icon && <div className="mb-2 text-lg">{icon}</div>}
+      <p className="text-[8px] uppercase tracking-wider text-slate-600">{title}</p>
+      <p className={compact ? "mt-1 text-base font-bold" : "mt-1 text-xl font-bold"}>{value}</p>
+      <p className="mt-1 text-[8px] text-slate-600">{sub}</p>
+    </div>
+  );
+}
+
+function DisasterLayerButton({ active, onClick, label }) {
+  return <button onClick={onClick} className={`rounded-lg px-3 py-1.5 text-[9px] transition ${active ? "bg-orange-400 font-bold text-slate-950" : "border border-white/10 text-slate-500 hover:border-orange-400/30 hover:text-white"}`}>{label}</button>;
+}
+
+function RiskBox({ label, value, tone }) {
+  const cls = tone === "red" ? "border-red-400/20 bg-red-400/5 text-red-300" : tone === "amber" ? "border-amber-400/20 bg-amber-400/5 text-amber-300" : "border-emerald-400/20 bg-emerald-400/5 text-emerald-300";
+  return <div className={`rounded-xl border p-3 ${cls}`}><p className="text-[8px] tracking-wider">{label}</p><p className="mt-1 text-lg font-bold">{value}</p></div>;
+}
+
+function DecisionCard({ icon, title, text }) {
+  return <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 transition hover:-translate-y-1 hover:border-orange-400/20"><div className="text-2xl">{icon}</div><h3 className="mt-3 text-sm font-semibold">{title}</h3><p className="mt-2 text-[10px] leading-5 text-slate-500">{text}</p></div>;
+}
+
+function FutureDisaster({ icon, title, text }) {
+  return <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 opacity-80 transition hover:-translate-y-1 hover:border-white/20"><div className="text-2xl">{icon}</div><p className="mt-4 text-[9px] uppercase tracking-[.2em] text-slate-600">Next module</p><h3 className="mt-1 text-sm font-semibold">{title}</h3><p className="mt-2 text-[10px] leading-5 text-slate-500">{text}</p></div>;
+}
 
 /* ============================================================
    MAP INTERACTION
